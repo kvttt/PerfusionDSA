@@ -20,7 +20,6 @@ parser.add_argument('--show_aif', action='store_true', help='show AIF')
 parser.add_argument('--show_results', action='store_true', help='show result maps')
 args = parser.parse_args()
 
-
 '''
 DSA
 '''
@@ -84,7 +83,7 @@ MTT = medfilt2d(MTT, kernel_size=3)
 Tmax = medfilt2d(Tmax, kernel_size=3)
 
 # Display perfusion maps
-if args.show_aif:
+if args.show_results:
     # making subplots
     fig, ax = plt.subplots(2, 2)
 
