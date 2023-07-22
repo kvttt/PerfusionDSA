@@ -50,98 +50,98 @@ AIF
 '''
 
 if args.aif is None:
-    # Get AIF mask from user input
-    # initialize flag, ix, iy, roi
-    cv2.destroyAllWindows()
-    drawing = False
-    start, end = (-1, -1), (-1, -1)
-    roi = np.empty((2, 2), dtype=int)
+	# Get AIF mask from user input
+	# initialize flag, ix, iy, roi
+	cv2.destroyAllWindows()
+	drawing = False
+	start, end = (-1, -1), (-1, -1)
+	roi = np.empty((2, 2), dtype=int)
 
-    # display first half of DSA summed together along axis=0
-    img = np.sum(dsa_seq, axis=0)
-    img = (img - np.min(img)) / (np.max(img) - np.min(img))
+	# display first half of DSA summed together along axis=0
+	img = np.sum(dsa_seq, axis=0)
+	img = (img - np.min(img)) / (np.max(img) - np.min(img))
 
-    # Mouse event
-    def draw_roi(event, x, y, flags, param):
-        global drawing, start, end, ix, iy, roi
+	# Mouse event
+	def draw_roi(event, x, y, flags, param):
+		global drawing, start, end, ix, iy, roi
 
-        if event == cv2.EVENT_LBUTTONDOWN:
-            drawing = True
-            start = (x, y)
-            ix, iy = x, y
+		if event == cv2.EVENT_LBUTTONDOWN:
+			drawing = True
+			start = (x, y)
+			ix, iy = x, y
 
-        elif event == cv2.EVENT_MOUSEMOVE:
-            if drawing:
-                end = (x, y)
+		elif event == cv2.EVENT_MOUSEMOVE:
+			if drawing:
+				end = (x, y)
 
-        elif event == cv2.EVENT_LBUTTONUP:
-            drawing = False
-            cv2.rectangle(img, start, (x, y), (255, 0, 0), -1)
-            start, end = (-1, -1), (-1, -1)
-            roi = np.array([[ix, iy], [x, y]])
-            print(f'ROI specified at\n{roi}. \nPress Enter to confirm...')
+		elif event == cv2.EVENT_LBUTTONUP:
+			drawing = False
+			cv2.rectangle(img, start, (x, y), (255, 0, 0), -1)
+			start, end = (-1, -1), (-1, -1)
+			roi = np.array([[ix, iy], [x, y]])
+			print(f'ROI specified at\n{roi}. \nPress Enter to confirm...')
 
 
-    # initialize window
-    cv2.namedWindow('DSA', cv2.WINDOW_NORMAL)
-    cv2.setMouseCallback('DSA', draw_roi)
-    print('Please specify ROI for AIF (press Enter to confirm)...')
+	# initialize window
+	cv2.namedWindow('DSA', cv2.WINDOW_NORMAL)
+	cv2.setMouseCallback('DSA', draw_roi)
+	print('Please specify ROI for AIF (press Enter to confirm)...')
 
-    while True:
-        # cv2.resizeWindow('DSA', img.shape[0], img.shape[1])
-        temp = np.copy(img)
-        if drawing and end != (-1, -1):
-            cv2.rectangle(temp, start, end, (255, 0, 0), -1)
-        cv2.resizeWindow('DSA', 800, 800)
-        cv2.imshow('DSA', temp)
-        if cv2.waitKey(20) == ord('\r'):
-            break
-    cv2.destroyAllWindows()
+	while True:
+		# cv2.resizeWindow('DSA', img.shape[0], img.shape[1])
+		temp = np.copy(img)
+		if drawing and end != (-1, -1):
+			cv2.rectangle(temp, start, end, (255, 0, 0), -1)
+		cv2.resizeWindow('DSA', 800, 800)
+		cv2.imshow('DSA', temp)
+		if cv2.waitKey(20) == ord('\r'):
+			break
+	cv2.destroyAllWindows()
 
-    # Create ndarray from saved ROI vertices
-    aif_mask = np.zeros_like(img)
-    aif_mask[roi[0, 0]:roi[1, 0], roi[0, 1]:roi[1, 1]] = 1
+	# Create ndarray from saved ROI vertices
+	aif_mask = np.zeros_like(img)
+	aif_mask[roi[0, 0]:roi[1, 0], roi[0, 1]:roi[1, 1]] = 1
 
-    aif = np.mean(data[aif_mask > 0], axis=0)  # aif.shape = (1, t)
-    aif = np.squeeze(aif)  # aif.shape = (t,)
+	aif = np.mean(data[aif_mask > 0], axis=0)  # aif.shape = (1, t)
+	aif = np.squeeze(aif)  # aif.shape = (t,)
 
 else:
-    # Load AIF mask from file
-    aif_mask = nib.load(args.aif)
-    aif_mask = aif_mask.get_fdata()
-    aif_mask = np.sum(aif_mask, axis=2)  # aif.shape = (x, y)
+	# Load AIF mask from file
+	aif_mask = nib.load(args.aif)
+	aif_mask = aif_mask.get_fdata()
+	aif_mask = np.sum(aif_mask, axis=2)  # aif.shape = (x, y)
 
-    aif = np.mean(data[aif_mask > 0], axis=0)  # aif.shape = (1, t)
-    aif = np.squeeze(aif)  # aif.shape = (t,)
+	aif = np.mean(data[aif_mask > 0], axis=0)  # aif.shape = (1, t)
+	aif = np.squeeze(aif)  # aif.shape = (t,)
 
 # Apply gaussian filter to smooth AIF and data
 if args.prefilter:
-    m = max(3, args.fps)
-    a = 1.66
-    print('Applying gaussian filter to smooth AIF...')
-    w = gaussian(m, (m - 1) / (2 * a))
-    w = w / w.sum()
-    aif = lfilter(w, 1, aif)
-    print('Done.')
+	m = max(3, args.fps)
+	a = 1.66
+	print('Applying gaussian filter to smooth AIF...')
+	w = gaussian(m, (m - 1) / (2 * a))
+	w = w / w.sum()
+	aif = lfilter(w, 1, aif)
+	print('Done.')
 
-    print('Applying gaussian filter to smooth DSA...')
+	print('Applying gaussian filter to smooth DSA...')
 
-    data = lfilter(w, 1, data, axis=-1)
-    print('Done.')
+	data = lfilter(w, 1, data, axis=-1)
+	print('Done.')
 
 # Plot AIF
 if args.show_aif:
-    if args.aif is None:
-        print(f'Displaying AIF at \n{roi}. \nClose the window to continue...')
-    else:
-        print(f'Displaying AIF from file. Close the window to continue...')
-    timesteps = np.arange(len(aif), dtype=float)
-    plt.title('Arterial Input Function')
-    plt.xlabel('Time (frames)')
-    plt.ylabel('Intensity (a.u.)')
-    plt.plot(timesteps, aif, label='AIF')
-    plt.legend()
-    plt.show()
+	if args.aif is None:
+		print(f'Displaying AIF at \n{roi}. \nClose the window to continue...')
+	else:
+		print(f'Displaying AIF from file. Close the window to continue...')
+	timesteps = np.arange(len(aif), dtype=float)
+	plt.title('Arterial Input Function')
+	plt.xlabel('Time (frames)')
+	plt.ylabel('Intensity (a.u.)')
+	plt.plot(timesteps, aif, label='AIF')
+	plt.legend()
+	plt.show()
 
 '''
 Perfusion
@@ -172,7 +172,7 @@ print('Done.')
 
 # Save perfusion maps
 if not os.path.exists(args.output):
-    os.makedirs(args.output)
+	os.makedirs(args.output)
 
 print('Saving perfusion maps...')
 nib.save(nib.Nifti1Image(CBF, np.eye(4)), os.path.join(args.output, 'CBF.nii'))
@@ -183,19 +183,26 @@ print('Done.')
 
 # Display perfusion maps
 if args.show_results:
-    print('Displaying perfusion maps...')
-    # making subplots
-    fig, ax = plt.subplots(2, 2)
+	print('Displaying perfusion maps...')
+	# making subplots
+	fig, ax = plt.subplots(2, 2)
 
-    # set data with subplots and plot
-    ax[0, 0].imshow(CBF, cmap='gray')
-    ax[0, 0].set_title("CBF")
-    ax[0, 1].imshow(CBV, cmap='gray')
-    ax[0, 1].set_title("CBV")
-    ax[1, 0].imshow(MTT, cmap='gray')
-    ax[1, 0].set_title("MTT")
-    ax[1, 1].imshow(Tmax, cmap='gray')
-    ax[1, 1].set_title("Tmax")
+	# set data with subplots and plot
+	im00 = ax[0, 0].imshow(CBF, cmap='jet')
+	ax[0, 0].set_title("CBF")
+	plt.colorbar(im00, ax=ax[0, 0])
 
-    fig.tight_layout()
-    plt.show()
+	im01 = ax[0, 1].imshow(CBV, cmap='jet')
+	ax[0, 1].set_title("CBV")
+	plt.colorbar(im01, ax=ax[0, 1])
+
+	im10 = ax[1, 0].imshow(MTT, cmap='jet')
+	ax[1, 0].set_title("MTT")
+	plt.colorbar(im10, ax=ax[1, 0])
+
+	im11 = ax[1, 1].imshow(Tmax, cmap='jet')
+	ax[1, 1].set_title("Tmax")
+	plt.colorbar(im11, ax=ax[1, 1])
+
+	fig.tight_layout()
+	plt.show()
