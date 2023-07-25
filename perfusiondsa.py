@@ -1,5 +1,6 @@
 import nibabel as nib
 import pydicom as dicom
+# from pydicom.uid import ImplicitVRLittleEndian
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import medfilt2d, lfilter
@@ -26,13 +27,24 @@ args = parser.parse_args()
 '''
 DSA
 '''
+IS_DICOM = True
 # Load DSA
 print('Reading DSA...')
-dsa_seq = dicom.read_file(args.dsa)
-dsa_seq = dsa_seq.pixel_array  # dsa_seq.shape = (t, x, y)
-data = dsa_seq[..., np.newaxis]  # data.shape = (t, x, y, 1)
-data = np.transpose(data, axes=[1, 2, 3, 0])  # data.shape = (x, y, 1, t)
-print(f'Done. DSA shape = {dsa_seq.shape}.')
+try:
+	dsa = dicom.read_file(args.dsa)
+	dsa_seq = dsa.pixel_array  # dsa_seq.shape = (t, x, y)
+	data = dsa_seq[..., np.newaxis]  # data.shape = (t, x, y, 1)
+	data = np.transpose(data, axes=[1, 2, 3, 0])  # data.shape = (x, y, 1, t)
+except dicom.errors.InvalidDicomError:
+	try:
+		dsa_seq = nib.load(args.dsa)
+		dsa_seq = dsa_seq.get_fdata()  # dsa_seq.shape = (x, y, t)
+		data = dsa_seq[..., np.newaxis]  # data.shape = (x, y, t, 1)
+		data = np.transpose(data, axes=[0, 1, 3, 2])  # data.shape = (x, y, 1, t)
+		IS_DICOM = False
+	except nib.filebasedimages.ImageFileError:
+		raise ValueError('Invalid input file type. Please specify a valid DICOM or NIFTI file.')
+print(f'Done. Loaded data shape = {data.shape}.')
 
 print('Preprocessing DSA...')
 data[data == 0] = np.median(data)
@@ -148,12 +160,7 @@ Perfusion
 '''
 # Compute perfusion
 print('Calculating perfusion maps...')
-CBF, CBV, MTT, Tmax = modelfree_deconv(data,
-                                       aif,
-                                       dt=1. / args.fps,
-                                       hct=args.hct,
-                                       epsilon=1e-9,
-                                       )
+CBF, CBV, MTT, Tmax = modelfree_deconv(data, aif, dt=1. / args.fps, hct=args.hct, epsilon=1e-9, )
 print('Done.')
 
 # Post-process perfusion maps
@@ -174,7 +181,55 @@ print('Done.')
 if not os.path.exists(args.output):
 	os.makedirs(args.output)
 
-print('Saving perfusion maps...')
+# if IS_DICOM:
+# 	print('Saving perfusion maps as DICOM files...')
+# 	dsa.FrameTimeVector = None
+# 	dsa.NumberOfFrames = 1
+# 	dsa.RepresentativeFrameNumber = None
+#
+# 	dsa.BitsAllocated = 64
+# 	dsa.BitsStored = 64
+# 	dsa.HighBit = dsa.BitsStored - 1
+# 	del dsa.PixelData
+#
+# 	dsa.StudyDescription = 'CBF'
+# 	dsa.SeriesNumber = 1001
+# 	dsa.filename = 'CBF.dcm'
+# 	cbf_uid = dicom.uid.generate_uid()
+# 	dsa.StudyInstanceUID = cbf_uid
+# 	# CBF1 = CBF[np.newaxis, ...]
+# 	dsa.DoubleFloatPixelData = CBF.tobytes()
+# 	dicom.dcmwrite(os.path.join(args.output, 'CBF.dcm'), dsa)
+#
+# 	dsa.StudyDescription = 'CBV'
+# 	dsa.SeriesNumber = 1002
+# 	dsa.filename = 'CBV.dcm'
+# 	cbv_uid = dicom.uid.generate_uid()
+# 	dsa.StudyInstanceUID = cbv_uid
+# 	# CBV1 = CBV[np.newaxis, ...]
+# 	dsa.DoubleFloatPixelData = CBV.tobytes()
+# 	dicom.dcmwrite(os.path.join(args.output, 'CBV.dcm'), dsa)
+#
+# 	dsa.StudyDescription = 'MTT'
+# 	dsa.SeriesNumber = 1003
+# 	dsa.filename = 'MTT.dcm'
+# 	mtt_uid = dicom.uid.generate_uid()
+# 	dsa.StudyInstanceUID = mtt_uid
+# 	# MTT1 = MTT[np.newaxis, ...]
+# 	dsa.DoubleFloatPixelData = MTT.tobytes()
+# 	dicom.dcmwrite(os.path.join(args.output, 'MTT.dcm'), dsa)
+#
+# 	dsa.StudyDescription = 'Tmax'
+# 	dsa.SeriesNumber = 1004
+# 	dsa.filename = 'Tmax.dcm'
+# 	tmax_uid = dicom.uid.generate_uid()
+# 	dsa.StudyInstanceUID = tmax_uid
+# 	# Tmax1 = Tmax[np.newaxis, ...]
+# 	dsa.DoubleFloatPixelData = Tmax.tobytes()
+# 	dicom.dcmwrite(os.path.join(args.output, 'Tmax.dcm'), dsa)
+#
+# else:
+print('Saving perfusion maps as NIFTI files...')
 nib.save(nib.Nifti1Image(CBF, np.eye(4)), os.path.join(args.output, 'CBF.nii'))
 nib.save(nib.Nifti1Image(CBV, np.eye(4)), os.path.join(args.output, 'CBV.nii'))
 nib.save(nib.Nifti1Image(MTT, np.eye(4)), os.path.join(args.output, 'MTT.nii'))
@@ -188,19 +243,23 @@ if args.show_results:
 	fig, ax = plt.subplots(2, 2)
 
 	# set data with subplots and plot
-	im00 = ax[0, 0].imshow(CBF, cmap='jet')
+	norm = plt.Normalize(vmin=np.percentile(CBF, 0), vmax=np.percentile(CBF, 98))
+	im00 = ax[0, 0].imshow(CBF, cmap='jet', norm=norm)
 	ax[0, 0].set_title("CBF")
 	plt.colorbar(im00, ax=ax[0, 0])
 
-	im01 = ax[0, 1].imshow(CBV, cmap='jet')
+	norm = plt.Normalize(vmin=np.percentile(CBV, 0), vmax=np.percentile(CBV, 98))
+	im01 = ax[0, 1].imshow(CBV, cmap='jet', norm=norm)
 	ax[0, 1].set_title("CBV")
 	plt.colorbar(im01, ax=ax[0, 1])
 
-	im10 = ax[1, 0].imshow(MTT, cmap='jet')
+	norm = plt.Normalize(vmin=np.percentile(MTT, 0), vmax=np.percentile(MTT, 98))
+	im10 = ax[1, 0].imshow(MTT, cmap='jet', norm=norm)
 	ax[1, 0].set_title("MTT")
 	plt.colorbar(im10, ax=ax[1, 0])
 
-	im11 = ax[1, 1].imshow(Tmax, cmap='jet')
+	norm = plt.Normalize(vmin=np.percentile(Tmax, 0), vmax=np.percentile(Tmax, 98))
+	im11 = ax[1, 1].imshow(Tmax, cmap='jet', norm=norm)
 	ax[1, 1].set_title("Tmax")
 	plt.colorbar(im11, ax=ax[1, 1])
 
